@@ -9,6 +9,8 @@ from optim import ObGD as Optimizer
 from time_wrapper import AddTimeInfo
 from normalization_wrappers import NormalizeObservation, ScaleReward
 from sparse_init import sparse_init
+from wrapper import MarkovWrapper
+
 
 def initialize_weights(m):
     if isinstance(m, nn.Linear):
@@ -105,7 +107,7 @@ class StreamAC(nn.Module):
             if torch.sign(delta_bar * delta).item() == -1:
                 print("Overshooting Detected!")
 
-def main(env_name, seed, lr, gamma, lamda, total_steps, entropy_coeff, kappa_policy, kappa_value, debug, overshooting_info, render=False):
+def main(env_name, seed, lr, gamma, lamda, total_steps, entropy_coeff, kappa_policy, kappa_value, debug, overshooting_info, render=False, delay=0, interval=0):
     torch.manual_seed(seed); np.random.seed(seed)
     env = gym.make(env_name, render_mode='human', max_episode_steps=10_000) if render else gym.make(env_name, max_episode_steps=10_000)
     env = gym.wrappers.FlattenObservation(env)
@@ -113,6 +115,7 @@ def main(env_name, seed, lr, gamma, lamda, total_steps, entropy_coeff, kappa_pol
     env = ScaleReward(env, gamma=gamma)
     env = NormalizeObservation(env)
     env = AddTimeInfo(env)
+    env = MarkovWrapper(env, delay=delay, discretization=interval, gamma=0.96)
     agent = StreamAC(n_obs=env.observation_space.shape[0], n_actions=env.action_space.n, lr=lr, gamma=gamma, lamda=lamda, kappa_policy=kappa_policy, kappa_value=kappa_value)
     if debug:
         print("seed: {}".format(seed), "env: {}".format(env.spec.id))
@@ -131,7 +134,7 @@ def main(env_name, seed, lr, gamma, lamda, total_steps, entropy_coeff, kappa_pol
             terminated, truncated = False, False
             s, _ = env.reset()
     env.close()
-    save_dir = "data_stream_ac_{}_lr{}_gamma{}_lamda{}_entropy_coeff{}".format(env.spec.id, lr, gamma, lamda, entropy_coeff)
+    save_dir = "data_stream_ac_{}_lr{}_gamma{}_lamda{}_entropy_coeff{}__delay{}_interval{}_seed{}".format(env.spec.id, lr, gamma, lamda, entropy_coeff, delay, interval, seed)
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     with open(os.path.join(save_dir, "seed_{}.pkl".format(seed)), "wb") as f:
@@ -152,4 +155,12 @@ if __name__ == '__main__':
     parser.add_argument('--overshooting_info', action='store_true')
     parser.add_argument('--render', action='store_true')
     args = parser.parse_args()
-    main(args.env_name, args.seed, args.lr, args.gamma, args.lamda, args.total_steps, args.entropy_coeff, args.kappa_policy, args.kappa_value, args.debug, args.overshooting_info, args.render)
+
+    delays = [0, 1, 2, 3, 4, 5]
+    intervals = [0, 1, 2, 3, 4, 5]
+    seeds = [np.random.randint(1, 10000001) for i in range(5)]
+
+    for delay in delays:
+        for interval in intervals:
+            for seed in seeds:
+                main(args.env_name, seed, args.lr, args.gamma, args.lamda, args.total_steps, args.entropy_coeff, args.kappa_policy, args.kappa_value, args.debug, args.overshooting_info, args.render, delay=delay, interval=interval)
