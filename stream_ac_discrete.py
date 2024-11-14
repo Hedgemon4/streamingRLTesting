@@ -163,4 +163,5 @@ if __name__ == '__main__':
     for delay in delays:
         for interval in intervals:
             for seed in seeds:
+                print("Delay {}, Interval {}, Seed, {}".format(delay, interval, seed))
                 main(args.env_name, seed, args.lr, args.gamma, args.lamda, args.total_steps, args.entropy_coeff, args.kappa_policy, args.kappa_value, args.debug, args.overshooting_info, args.render, delay=delay, interval=interval)
