@@ -9,6 +9,8 @@ from optim import ObGD as Optimizer
 from time_wrapper import AddTimeInfo
 from normalization_wrappers import NormalizeObservation, ScaleReward
 from sparse_init import sparse_init
+from wrapper import MarkovWrapper
+
 
 def initialize_weights(m):
     if isinstance(m, nn.Linear):
@@ -45,7 +47,7 @@ class Critic(nn.Module):
         x = self.fc_layer(x)
         x = F.layer_norm(x, x.size())
         x = F.leaky_relu(x)
-        x = self.hidden_layer(x)
+        x = self.hidden_layer(x)      
         x = F.layer_norm(x, x.size())
         x = F.leaky_relu(x)
         return self.linear_layer(x)
@@ -105,17 +107,15 @@ class StreamAC(nn.Module):
             if torch.sign(delta_bar * delta).item() == -1:
                 print("Overshooting Detected!")
 
-def main(env_name, seed, lr, gamma, lamda, total_steps, entropy_coeff, kappa_policy, kappa_value, debug, overshooting_info, render=False, episode_steps=None):
+def main(env_name, seed, lr, gamma, lamda, total_steps, entropy_coeff, kappa_policy, kappa_value, debug, overshooting_info, render=False, delay=0, interval=0):
     torch.manual_seed(seed); np.random.seed(seed)
-    if episode_steps is None:
-        env = gym.make(env_name, render_mode='human') if render else gym.make(env_name)
-    else:
-        env = gym.make(env_name, render_mode='human', max_episode_steps=episode_steps) if render else gym.make(env_name, max_episode_steps=episode_steps)
+    env = gym.make(env_name, render_mode='human', max_episode_steps=10_000) if render else gym.make(env_name, max_episode_steps=10_000)
     env = gym.wrappers.FlattenObservation(env)
     env = gym.wrappers.RecordEpisodeStatistics(env)
     env = ScaleReward(env, gamma=gamma)
     env = NormalizeObservation(env)
     env = AddTimeInfo(env)
+    env = MarkovWrapper(env, delay=delay, discretization=interval, gamma=0.96)
     agent = StreamAC(n_obs=env.observation_space.shape[0], n_actions=env.action_space.n, lr=lr, gamma=gamma, lamda=lamda, kappa_policy=kappa_policy, kappa_value=kappa_value)
     if debug:
         print("seed: {}".format(seed), "env: {}".format(env.spec.id))
@@ -134,7 +134,7 @@ def main(env_name, seed, lr, gamma, lamda, total_steps, entropy_coeff, kappa_pol
             terminated, truncated = False, False
             s, _ = env.reset()
     env.close()
-    save_dir = "data_stream_ac_{}_lr{}_gamma{}_lamda{}_entropy_coeff{}_steps{}_episodeSteps{}".format(env.spec.id, lr, gamma, lamda, entropy_coeff, total_steps, "default" if episode_steps is None else episode_steps )
+    save_dir = "data_stream_ac_{}_lr{}_gamma{}_lamda{}_entropy_coeff{}__delay{}_interval{}_seed{}".format(env.spec.id, lr, gamma, lamda, entropy_coeff, delay, interval, seed)
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     with open(os.path.join(save_dir, "seed_{}.pkl".format(seed)), "wb") as f:
@@ -142,18 +142,26 @@ def main(env_name, seed, lr, gamma, lamda, total_steps, entropy_coeff, kappa_pol
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Stream AC(λ)')
-    parser.add_argument('--env_name', type=str, default='CartPole-v1')
+    parser.add_argument('--env_name', type=str, default='MountainCar-v0')
     parser.add_argument('--seed', type=int, default=0)
     parser.add_argument('--lr', type=float, default=1.0)
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--lamda', type=float, default=0.8)
-    parser.add_argument('--total_steps', type=int, default=100_000)
+    parser.add_argument('--total_steps', type=int, default=500_000)
     parser.add_argument('--entropy_coeff', type=float, default=0.01)
     parser.add_argument('--kappa_policy', type=float, default=3.0)
     parser.add_argument('--kappa_value', type=float, default=2.0)
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--overshooting_info', action='store_true')
     parser.add_argument('--render', action='store_true')
-    parser.add_argument('--episode_steps', type=int, default=None)
     args = parser.parse_args()
-    main(args.env_name, args.seed, args.lr, args.gamma, args.lamda, args.total_steps, args.entropy_coeff, args.kappa_policy, args.kappa_value, args.debug, args.overshooting_info, args.render, episode_steps=args.episode_steps)
+
+    delays = [0, 1, 2, 3, 4, 5]
+    intervals = [0, 1, 2, 3, 4, 5]
+    seeds = [np.random.randint(1, 10000001) for i in range(5)]
+
+    for delay in delays:
+        for interval in intervals:
+            for seed in seeds:
+                print("Delay {}, Interval {}, Seed, {}".format(delay, interval, seed))
+                main(args.env_name, seed, args.lr, args.gamma, args.lamda, args.total_steps, args.entropy_coeff, args.kappa_policy, args.kappa_value, args.debug, args.overshooting_info, args.render, delay=delay, interval=interval)

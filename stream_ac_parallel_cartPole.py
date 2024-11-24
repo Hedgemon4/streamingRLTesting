@@ -1,4 +1,8 @@
+import multiprocessing
 import os, pickle, argparse
+from itertools import product
+from multiprocessing import Pool
+
 import torch
 import numpy as np
 import torch.nn as nn
@@ -9,6 +13,8 @@ from optim import ObGD as Optimizer
 from time_wrapper import AddTimeInfo
 from normalization_wrappers import NormalizeObservation, ScaleReward
 from sparse_init import sparse_init
+from wrapper import MarkovWrapper
+
 
 def initialize_weights(m):
     if isinstance(m, nn.Linear):
@@ -105,17 +111,26 @@ class StreamAC(nn.Module):
             if torch.sign(delta_bar * delta).item() == -1:
                 print("Overshooting Detected!")
 
-def main(env_name, seed, lr, gamma, lamda, total_steps, entropy_coeff, kappa_policy, kappa_value, debug, overshooting_info, render=False, episode_steps=None):
+def main(seed, observation_delay=0, repeat_interval=0, debug=False):
     torch.manual_seed(seed); np.random.seed(seed)
-    if episode_steps is None:
-        env = gym.make(env_name, render_mode='human') if render else gym.make(env_name)
-    else:
-        env = gym.make(env_name, render_mode='human', max_episode_steps=episode_steps) if render else gym.make(env_name, max_episode_steps=episode_steps)
+    env_name = "CartPole-v1"
+
+    lr = 1.0
+    gamma = 0.99
+    lamda = 0.8
+    total_steps = 100_000
+    entropy_coeff = 0.01
+    kappa_policy = 3.0
+    kappa_value = 2.0
+    overshooting_info = 'store_true'
+
+    env = gym.make(env_name)
     env = gym.wrappers.FlattenObservation(env)
     env = gym.wrappers.RecordEpisodeStatistics(env)
     env = ScaleReward(env, gamma=gamma)
     env = NormalizeObservation(env)
     env = AddTimeInfo(env)
+    env = MarkovWrapper(env, delay=observation_delay, discretization=repeat_interval, gamma=0.96)
     agent = StreamAC(n_obs=env.observation_space.shape[0], n_actions=env.action_space.n, lr=lr, gamma=gamma, lamda=lamda, kappa_policy=kappa_policy, kappa_value=kappa_value)
     if debug:
         print("seed: {}".format(seed), "env: {}".format(env.spec.id))
@@ -124,7 +139,7 @@ def main(env_name, seed, lr, gamma, lamda, total_steps, entropy_coeff, kappa_pol
     for t in range(1, total_steps+1):
         a = agent.sample_action(s)
         s_prime, r, terminated, truncated, info = env.step(a)
-        agent.update_params(s, a, r, s_prime, terminated or truncated, entropy_coeff, overshooting_info)
+        agent.update_params(s, a, r, s_prime, terminated or truncated, entropy_coeff, False)
         s = s_prime
         if terminated or truncated:
             if debug:
@@ -134,7 +149,7 @@ def main(env_name, seed, lr, gamma, lamda, total_steps, entropy_coeff, kappa_pol
             terminated, truncated = False, False
             s, _ = env.reset()
     env.close()
-    save_dir = "data_stream_ac_{}_lr{}_gamma{}_lamda{}_entropy_coeff{}_steps{}_episodeSteps{}".format(env.spec.id, lr, gamma, lamda, entropy_coeff, total_steps, "default" if episode_steps is None else episode_steps )
+    save_dir = "cartPole/data_stream_ac_{}_delay_{}_interval_{}_seed_{}".format(env.spec.id, observation_delay, repeat_interval, seed)
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     with open(os.path.join(save_dir, "seed_{}.pkl".format(seed)), "wb") as f:
@@ -156,4 +171,12 @@ if __name__ == '__main__':
     parser.add_argument('--render', action='store_true')
     parser.add_argument('--episode_steps', type=int, default=None)
     args = parser.parse_args()
-    main(args.env_name, args.seed, args.lr, args.gamma, args.lamda, args.total_steps, args.entropy_coeff, args.kappa_policy, args.kappa_value, args.debug, args.overshooting_info, args.render, episode_steps=args.episode_steps)
+
+    delays = [0, 1, 2, 3, 4, 5]
+    intervals = [0, 1, 2, 3, 4, 5]
+    seeds = [np.random.randint(1, 10000001) for i in range(5)]
+
+    combinations =list(product(seeds, delays, intervals))
+
+    with Pool(multiprocessing.cpu_count() - 1) as p:
+        p.starmap(main, combinations)
