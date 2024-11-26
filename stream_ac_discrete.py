@@ -105,7 +105,25 @@ class StreamAC(nn.Module):
             if torch.sign(delta_bar * delta).item() == -1:
                 print("Overshooting Detected!")
 
-def main(env_name, seed, lr, gamma, lamda, total_steps, entropy_coeff, kappa_policy, kappa_value, debug, overshooting_info, render=False, episode_steps=None):
+
+def expected_return(env, agent, seed, episodes=20):
+    returns = np.zeros(episodes)
+    with torch.no_grad():
+        for i in range(episodes):
+            s, _ = env.reset(seed=seed)
+            done = False
+            while not done:
+                a = agent.sample_action(s)
+                s_prime, r, terminated, truncated, info = env.step(a)
+                s = s_prime
+                if terminated or truncated:
+                    returns[i] = info['episode']['r'][0]
+                    terminated, truncated = False, False
+                    done = True
+    return returns.mean()
+
+
+def main(env_name, seed, lr, gamma, lamda, total_steps, entropy_coeff, kappa_policy, kappa_value, debug, overshooting_info, render=False, episode_steps=None, eval_frequency=1_000):
     torch.manual_seed(seed); np.random.seed(seed)
     if episode_steps is None:
         env = gym.make(env_name, render_mode='human') if render else gym.make(env_name)
@@ -116,10 +134,23 @@ def main(env_name, seed, lr, gamma, lamda, total_steps, entropy_coeff, kappa_pol
     env = ScaleReward(env, gamma=gamma)
     env = NormalizeObservation(env)
     env = AddTimeInfo(env)
+
+    # evaluation env
+    if episode_steps is None:
+        env_eval = gym.make(env_name, render_mode='human') if render else gym.make(env_name)
+    else:
+        env_eval = gym.make(env_name, render_mode='human', max_episode_steps=episode_steps) if render else gym.make(env_name, max_episode_steps=episode_steps)
+    env_eval = gym.wrappers.FlattenObservation(env_eval)
+    env_eval = gym.wrappers.RecordEpisodeStatistics(env_eval)
+    env_eval = ScaleReward(env_eval, gamma=gamma)
+    env_eval = NormalizeObservation(env_eval)
+    env_eval = AddTimeInfo(env_eval)
+
     agent = StreamAC(n_obs=env.observation_space.shape[0], n_actions=env.action_space.n, lr=lr, gamma=gamma, lamda=lamda, kappa_policy=kappa_policy, kappa_value=kappa_value)
     if debug:
         print("seed: {}".format(seed), "env: {}".format(env.spec.id))
     returns, term_time_steps = [], []
+    evaluation_returns = []
     s, _ = env.reset(seed=seed)
     for t in range(1, total_steps+1):
         a = agent.sample_action(s)
@@ -133,12 +164,17 @@ def main(env_name, seed, lr, gamma, lamda, total_steps, entropy_coeff, kappa_pol
             term_time_steps.append(t)
             terminated, truncated = False, False
             s, _ = env.reset()
+        if total_steps % eval_frequency == 0:
+            evaluation_returns.append(expected_return(env_eval, agent, seed))
     env.close()
-    save_dir = "data_stream_ac_{}_lr{}_gamma{}_lamda{}_entropy_coeff{}_steps{}_episodeSteps{}".format(env.spec.id, lr, gamma, lamda, entropy_coeff, total_steps, "default" if episode_steps is None else episode_steps )
+    save_dir = "data_stream_ac_{}_lr{}_gamma{}_lamda{}_entropy_coeff{}_steps{}_episodeSteps{}_episode_eval_test".format(env.spec.id, lr, gamma, lamda, entropy_coeff, total_steps, "default" if episode_steps is None else episode_steps )
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     with open(os.path.join(save_dir, "seed_{}.pkl".format(seed)), "wb") as f:
         pickle.dump((returns, term_time_steps, env_name), f)
+    with open(os.path.join(save_dir, "seed_{}_eval_returns.pkl".format(seed)), "wb") as f:
+        pickle.dump(evaluation_returns, f)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Stream AC(λ)')
