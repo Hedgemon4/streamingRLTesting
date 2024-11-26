@@ -156,6 +156,7 @@ def main(seed, observation_delay=0, repeat_interval=0, debug=False):
         pickle.dump((returns, term_time_steps, env_name), f)
 
 if __name__ == '__main__':
+    print("Started script")
     parser = argparse.ArgumentParser(description='Stream AC(λ)')
     parser.add_argument('--env_name', type=str, default='CartPole-v1')
     parser.add_argument('--seed', type=int, default=0)
@@ -174,7 +175,7 @@ if __name__ == '__main__':
 
     delays = [0, 1, 2, 3, 4, 5]
     intervals = [0, 1, 2, 3, 4, 5]
-    seeds = [np.random.randint(1, 10000001) for i in range(5)]
+    seeds = [np.random.randint(1, 10000001) for i in range(10)]
 
     combinations =list(product(seeds, delays, intervals))
 
