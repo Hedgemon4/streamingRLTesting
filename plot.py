@@ -52,6 +52,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_dir', type=str, default='data_stream_ac_MountainCar-v0_lr1.0_gamma0.99_lamda0.8_entropy_coeff0.01_steps500000')
     parser.add_argument('--int_space', type=int, default=5_000)
-    parser.add_argument('--total_steps', type=int, default=100_000)
+    parser.add_argument('--total_steps', type=int, default=500_000)
     args = parser.parse_args()
     main(args.data_dir, args.int_space, args.total_steps)
