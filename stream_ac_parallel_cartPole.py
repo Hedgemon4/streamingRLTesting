@@ -1,3 +1,4 @@
+import csv
 import multiprocessing
 import os, pickle, argparse
 from itertools import product
@@ -13,6 +14,7 @@ from optim import ObGD as Optimizer
 from time_wrapper import AddTimeInfo
 from normalization_wrappers import NormalizeObservation, ScaleReward
 from sparse_init import sparse_init
+from utils import expected_return
 from wrapper import MarkovWrapper
 
 
@@ -124,6 +126,8 @@ def main(seed, observation_delay=0, repeat_interval=0, debug=False):
     kappa_value = 2.0
     overshooting_info = 'store_true'
 
+    num_training_timesteps = total_steps // (repeat_interval + 1)
+
     env = gym.make(env_name)
     env = gym.wrappers.FlattenObservation(env)
     env = gym.wrappers.RecordEpisodeStatistics(env)
@@ -136,7 +140,7 @@ def main(seed, observation_delay=0, repeat_interval=0, debug=False):
         print("seed: {}".format(seed), "env: {}".format(env.spec.id))
     returns, term_time_steps = [], []
     s, _ = env.reset(seed=seed)
-    for t in range(1, total_steps+1):
+    for t in range(1, num_training_timesteps+1):
         a = agent.sample_action(s)
         s_prime, r, terminated, truncated, info = env.step(a)
         agent.update_params(s, a, r, s_prime, terminated or truncated, entropy_coeff, False)
@@ -149,11 +153,28 @@ def main(seed, observation_delay=0, repeat_interval=0, debug=False):
             terminated, truncated = False, False
             s, _ = env.reset()
     env.close()
-    save_dir = "cartPole/data_stream_ac_{}_delay_{}_interval_{}_seed_{}".format(env.spec.id, observation_delay, repeat_interval, seed)
+
+    # Final Eval
+    eval_env = gym.make(env_name)
+    eval_env = gym.wrappers.FlattenObservation(eval_env)
+    eval_env = gym.wrappers.RecordEpisodeStatistics(eval_env)
+    eval_env = NormalizeObservation(eval_env)
+    eval_env = AddTimeInfo(eval_env)
+    eval_env = MarkovWrapper(eval_env, delay=observation_delay, discretization=repeat_interval, gamma=0.96)
+    mean_reward, std_reward, eval_returns = expected_return(eval_env, agent, seed, 10)
+    eval_env.close()
+
+    save_dir = f"constant_env_steps/cartPole/data_stream_ac/interval_{repeat_interval}/delay_{observation_delay}/seed_{seed}"
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     with open(os.path.join(save_dir, "seed_{}.pkl".format(seed)), "wb") as f:
         pickle.dump((returns, term_time_steps, env_name), f)
+
+    with open(os.path.join(save_dir, "results.csv"), "w") as file:
+        writer = csv.writer(file)
+        writer.writerow([mean_reward, std_reward])
+        writer.writerow(eval_returns)
+
 
 if __name__ == '__main__':
     print("Started script")
