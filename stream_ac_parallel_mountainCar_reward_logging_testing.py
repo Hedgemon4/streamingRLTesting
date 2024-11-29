@@ -120,7 +120,7 @@ def main(seed, observation_delay=0, repeat_interval=0, debug=False):
     lr = 1.0
     gamma = 0.99
     lamda = 0.8
-    total_steps = 100_000
+    total_steps = 500_000
     entropy_coeff = 0.01
     kappa_policy = 3.0
     kappa_value = 2.0
