@@ -214,7 +214,7 @@ if __name__ == '__main__':
 
     delays = [0, 1, 2]
     intervals = [0, 4, 16]
-    seeds = [np.random.randint(1, 10000001) for i in range(3)]
+    seeds = [np.random.randint(1, 10000001) for i in range(2)]
 
     combinations =list(product(seeds, delays, intervals))
 
