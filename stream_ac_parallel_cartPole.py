@@ -164,7 +164,7 @@ def main(seed, observation_delay=0, repeat_interval=0, debug=False):
     mean_reward, std_reward, eval_returns = expected_return(eval_env, agent, seed, 10)
     eval_env.close()
 
-    save_dir = f"constant_env_steps/cartPole/data_stream_ac/interval_{repeat_interval}/delay_{observation_delay}/seed_{seed}"
+    save_dir = f"constant_env_steps/cartPole/data_stream_ac_rerun/interval_{repeat_interval}/delay_{observation_delay}/seed_{seed}"
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     with open(os.path.join(save_dir, "seed_{}.pkl".format(seed)), "wb") as f:
