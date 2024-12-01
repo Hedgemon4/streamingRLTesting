@@ -152,23 +152,18 @@ def main(seed, observation_delay=0, repeat_interval=0, debug=False):
             term_time_steps.append(t)
             terminated, truncated = False, False
             s, _ = env.reset()
+
+    mean_reward, std_reward, eval_returns = expected_return(env, agent, seed, 10)
     env.close()
 
-    # Final Eval
-    eval_env = gym.make(env_name)
-    eval_env = gym.wrappers.FlattenObservation(eval_env)
-    eval_env = gym.wrappers.RecordEpisodeStatistics(eval_env)
-    eval_env = NormalizeObservation(eval_env)
-    eval_env = AddTimeInfo(eval_env)
-    eval_env = MarkovWrapper(eval_env, delay=observation_delay, discretization=repeat_interval, gamma=0.96)
-    mean_reward, std_reward, eval_returns = expected_return(eval_env, agent, seed, 10)
-    eval_env.close()
-
-    save_dir = f"constant_env_steps/mountainCar/data_stream_ac/interval_{repeat_interval}/delay_{observation_delay}/seed_{seed}"
+    save_dir = f"constant_env_steps/mountainCar/data_stream_ac_fixed_eval_bug/interval_{repeat_interval}/delay_{observation_delay}/seed_{seed}"
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     with open(os.path.join(save_dir, "training_data.pkl".format(seed)), "wb") as f:
         pickle.dump((returns, term_time_steps, env_name), f)
+
+    model_save_path = os.path.join(save_dir, "model.pt")
+    torch.save(agent.state_dict(), model_save_path)
 
     with open(os.path.join(save_dir, "results.csv"), "w") as file:
         writer = csv.writer(file)
@@ -176,7 +171,7 @@ def main(seed, observation_delay=0, repeat_interval=0, debug=False):
         writer.writerow(eval_returns)
 
 if __name__ == '__main__':
-    print("Started script")
+    print("MountainCar Script Started")
     parser = argparse.ArgumentParser(description='Stream AC(λ)')
     parser.add_argument('--env_name', type=str, default='CartPole-v1')
     parser.add_argument('--seed', type=int, default=0)
@@ -195,7 +190,7 @@ if __name__ == '__main__':
 
     delays = [0, 1, 2, 3, 4, 5]
     intervals = [0, 4, 8, 12, 16]
-    seeds = [np.random.randint(1, 10000001) for i in range(10)]
+    seeds = [np.random.randint(1, 10000001) for i in range(5)]
 
     combinations =list(product(seeds, delays, intervals))
 
