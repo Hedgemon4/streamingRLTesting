@@ -169,6 +169,9 @@ def main(seed, observation_delay=0, repeat_interval=0, debug=False):
     with open(os.path.join(save_dir, "seed_{}.pkl".format(seed)), "wb") as f:
         pickle.dump((returns, term_time_steps, env_name), f)
 
+    model_save_path = os.path.join(save_dir, "model.pt")
+    torch.save(agent.state_dict(), model_save_path)
+
     with open(os.path.join(save_dir, "results.csv"), "w") as file:
         writer = csv.writer(file)
         writer.writerow([mean_reward, std_reward])
